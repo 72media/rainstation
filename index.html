@@ -67,7 +67,7 @@
         }
         .weather-btn:hover { background-color: #1e90ff; color: black; box-shadow: 0 0 10px #1e90ff; }
 
-        /* ===== Top 5 Rain Panel (ใหม่) ===== */
+        /* ===== Top 5 Rain Panel ===== */
         #top-rainfall-panel {
             position: absolute;
             bottom: max(20px, env(safe-area-inset-bottom));
@@ -84,7 +84,7 @@
             font-size: 12px;
             min-width: 230px;
             max-width: 300px;
-            display: none; /* ซ่อนไว้ก่อนจนกว่าจะโหลดข้อมูลเสร็จ */
+            display: none;
         }
         .top-title {
             font-weight: bold;
@@ -96,41 +96,16 @@
             align-items: center;
             gap: 6px;
         }
-        #top-rainfall-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
+        #top-rainfall-list { list-style: none; padding: 0; margin: 0; }
         #top-rainfall-list li {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 6px;
-            cursor: pointer;
-            padding: 4px 6px;
-            border-radius: 6px;
-            transition: background 0.2s ease;
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 6px; cursor: pointer; padding: 4px 6px;
+            border-radius: 6px; transition: background 0.2s ease;
         }
-        #top-rainfall-list li:hover {
-            background: rgba(255,255,255,0.15);
-        }
-        .top-rank {
-            font-weight: bold;
-            color: #ffd400;
-            margin-right: 6px;
-            width: 15px;
-        }
-        .top-name {
-            flex: 1;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            margin-right: 8px;
-        }
-        .top-val {
-            font-weight: bold;
-            font-size: 13px;
-        }
+        #top-rainfall-list li:hover { background: rgba(255,255,255,0.15); }
+        .top-rank { font-weight: bold; color: #ffd400; margin-right: 6px; width: 15px; }
+        .top-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 8px; }
+        .top-val { font-weight: bold; font-size: 13px; }
 
         /* Weather Overlay */
         #weather-overlay {
@@ -155,7 +130,6 @@
             display: block; width: 100%; height: min(450px, 56.25vw);
             min-height: 220px; aspect-ratio: 16 / 9; border: 0;
         }
-
         .video-weather-overlay {
             position: absolute; bottom: 0; left: 0; width: 100%;
             background: rgba(0, 0, 0, 0.65); color: #ffffff;
@@ -169,7 +143,6 @@
             50%      { transform: scale(1.18); box-shadow: 0 0 20px rgba(30,144,255,1),   inset 0 0 10px rgba(30,144,255,0.7); }
         }
 
-        /* ===== Animation สำหรับจุดฝนหนัก ===== */
         @keyframes rainHeavyPulse {
             0%, 100% { box-shadow: 0 0 0 0 rgba(255, 32, 32, 0.7); }
             50%      { box-shadow: 0 0 0 10px rgba(255, 32, 32, 0); }
@@ -275,8 +248,7 @@
                 max-height: calc(100dvh - var(--topbar-offset) - 18px); padding: 10px;
             }
             .video-container iframe { height: auto; min-height: 0; }
-            
-            #top-rainfall-panel { display: none !important; } /* ซ่อนบนมือถือเพื่อประหยัดพื้นที่ */
+            #top-rainfall-panel { display: none !important; }
         }
     </style>
 
@@ -364,7 +336,6 @@
         <button class="weather-btn" onclick="toggleWeather()">🌡️ เช็คสภาพอากาศ</button>
     </div>
 
-    <!-- Panel แสดง Top 5 (ซ่อนไว้ก่อน) -->
     <div id="top-rainfall-panel">
         <div class="top-title">🏆 5 อันดับฝนหนักสุด (มม./ชม.)</div>
         <ul id="top-rainfall-list"></ul>
@@ -529,7 +500,6 @@
         // ========== 7. สถานีวัดน้ำฝน (ทั้งจังหวัดนครศรีธรรมราช) ==========
         // ============================================================
         
-        // เก็บ Reference ของ Marker เพื่อใช้ในการ FlyTo จาก Panel
         var stationMarkers = {}; 
 
         function rainColor(mm) {
@@ -560,19 +530,17 @@
             { id: 1120555, lat: 8.2542,  lon: 99.80341, name: 'หน่วยจัดการต้นน้ำปากพนัง', agency: 'FOP', prov: 'ต.หินตก · อ.ร่อนพิบูลย์ · นครศรีธรรมราช', mm: 31.8, mm24: null }
         ];
 
-        // ---- ฟังก์ชันอัปเดต Panel Top 5 ----
         function updateTop5(stations) {
             const listEl = document.getElementById('top-rainfall-list');
             const panelEl = document.getElementById('top-rainfall-panel');
             listEl.innerHTML = '';
             
-            // กรองเฉพาะสถานีที่มีฝนตกจริง (mm > 0)
             const valid = stations
                 .filter(s => {
                     const mm = Number(s.mm);
                     return isFinite(mm) && mm > 0;
                 })
-                .sort((a, b) => Number(b.mm) - Number(a.mm)); // เรียงจากมากไปน้อย
+                .sort((a, b) => Number(b.mm) - Number(a.mm));
 
             if (valid.length === 0) {
                 listEl.innerHTML = '<li style="justify-content:center;color:#9aa0a6;cursor:default;padding:10px 0;">ขณะนี้ไม่มีฝนตกในพื้นที่</li>';
@@ -593,12 +561,11 @@
                     <span class="top-val" style="color:${color}">${mm.toFixed(1)}</span>
                 `;
                 
-                // คลิกแล้วบินไปหาสถานีนั้น
                 li.onclick = () => {
                     map.flyTo([lat, lng], 12, { duration: 1.5 });
                     const marker = stationMarkers[s.id];
                     if (marker) {
-                        setTimeout(() => marker.openPopup(), 1600); // รอให้แผนที่บินไปถึงก่อน แล้วค่อยเปิด Popup
+                        setTimeout(() => marker.openPopup(), 1600);
                     }
                 };
                 listEl.appendChild(li);
@@ -607,10 +574,9 @@
             panelEl.style.display = 'block';
         }
 
-        // ---- วาดสถานีลงแผนที่ ----
         function renderStations(stations, tag) {
             nstRainLayer.clearLayers();
-            stationMarkers = {}; // เคลียร์ของเก่า
+            stationMarkers = {};
             let drawn = 0;
 
             stations.forEach(s => {
@@ -641,7 +607,6 @@
                     fillColor: color, fillOpacity: 0.9
                 });
 
-                // เพิ่ม Animation กรณีฝนตกหนัก
                 if (mm != null && mm > 50) {
                     marker.getElement()?.style.setProperty('animation', 'rainHeavyPulse 1.5s infinite');
                 }
@@ -652,18 +617,16 @@
                       })
                       .addTo(nstRainLayer);
 
-                stationMarkers[s.id] = marker; // เก็บ Reference ไว้ใช้กับ Panel Top 5
+                stationMarkers[s.id] = marker;
                 drawn++;
             });
 
             if (!map.hasLayer(nstRainLayer)) nstRainLayer.addTo(map);
             console.log('[NST Rain][' + tag + '] วาด ' + drawn + ' สถานี');
-
-            // อัปเดต Panel Top 5
             updateTop5(stations);
         }
 
-        // ---- โหลดจาก API ----
+        // ---- โหลดจาก API (แก้ไขส่วน CORS แล้ว) ----
         async function loadNstRain() {
             const now = new Date();
             const th = new Date(now.getTime() + 7 * 3600 * 1000 - 30 * 60 * 1000);
@@ -672,13 +635,15 @@
             const date = th.getUTCFullYear() + '-' + p(th.getUTCMonth() + 1) + '-' + p(th.getUTCDate());
             const time = p(th.getUTCHours()) + ':' + p(th.getUTCMinutes());
 
-            const apiUrl = 'https://clpp-radar.onwr.go.th/api/rain_stations'
+            // URL ปลายทางจริง
+            const targetApiUrl = 'https://clpp-radar.onwr.go.th/api/rain_stations'
                       + '?radar_date=' + date + '&radar_time=' + encodeURIComponent(time);
+            
+            // ส่งผ่าน Proxy ของ Cloudflare Pages
+            const proxyUrl = `/api/proxy?url=${encodeURIComponent(targetApiUrl)}`;
 
             try {
-                // ใช้ Fetch ตรงๆ (เพราะคุณเปิด CORS Extension ไว้แล้ว)
-                // ถ้าไม่ได้เปิด Extension ให้เปลี่ยนไปใช้ Proxy ข้างล่าง
-                const res = await fetch(apiUrl, { cache: 'no-store' });
+                const res = await fetch(proxyUrl, { cache: 'no-store' });
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 
                 const json = await res.json();
