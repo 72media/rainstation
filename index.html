@@ -626,7 +626,7 @@
             updateTop5(stations);
         }
 
-        // ---- โหลดจาก API (แก้ไขส่วน CORS แล้ว) ----
+        // ---- โหลดจาก API ผ่าน Cloudflare Worker ----
         async function loadNstRain() {
             const now = new Date();
             const th = new Date(now.getTime() + 7 * 3600 * 1000 - 30 * 60 * 1000);
@@ -639,8 +639,8 @@
             const targetApiUrl = 'https://clpp-radar.onwr.go.th/api/rain_stations'
                       + '?radar_date=' + date + '&radar_time=' + encodeURIComponent(time);
             
-            // ส่งผ่าน Proxy ของ Cloudflare Pages
-            const proxyUrl = `/api/proxy?url=${encodeURIComponent(targetApiUrl)}`;
+            // [แก้ไขจุดนี้] เปลี่ยนมาเรียกผ่าน Cloudflare Worker ที่คุณสร้างไว้แล้ว
+            const proxyUrl = `https://rainstation.2ramrome.workers.dev/?url=${encodeURIComponent(targetApiUrl)}`;
 
             try {
                 const res = await fetch(proxyUrl, { cache: 'no-store' });
