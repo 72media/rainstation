@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>กล้องตลาดร่อนพิบูลย์+เรดาร์</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <style>
+        :root {
+            --ui-blue: #1e90ff;
+            --radar-cyan: #00e5ff;
+            --glass-bg: rgba(4, 15, 30, 0.68);
+            --glass-border: rgba(80, 190, 255, 0.55);
+            --glass-shadow: 0 10px 35px rgba(0, 0, 0, 0.42), 0 0 22px rgba(30, 144, 255, 0.22);
+            --topbar-offset: 95px;
+        }
+        *, *::before, *::after { box-sizing: border-box; }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+            background-color: #000; font-family: 'Tahoma', sans-serif;
+        }
+        #map { width: 100%; height: 100dvh; min-height: 100vh; z-index: 1; }
+        
+        /* UI Top Bar */
+        .ui-top-container {
+            position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+            z-index: 1000; display: flex; align-items: center; gap: 14px;
+            width: max-content; max-width: calc(100% - 24px); padding: 10px 18px;
+            border: 1px solid var(--glass-border); border-radius: 22px;
+            background: var(--glass-bg); box-shadow: var(--glass-shadow);
+            -webkit-backdrop-filter: blur(16px) saturate(140%);
+            backdrop-filter: blur(16px) saturate(140%);
+            white-space: nowrap;
+        }
+        #live-clock {
+            color: var(--ui-blue); font-weight: bold; font-size: 15px;
+            border-right: 1px solid rgba(255, 255, 255, 0.2); padding-right: 14px;
+            text-shadow: 0 0 8px rgba(30, 144, 255, 0.6);
+        }
+        .radar-panel-inline {
+            display: flex; align-items: center; gap: 8px; min-width: 0;
+            padding-right: 14px; border-right: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .radar-panel-inline .radar-header { margin-bottom: 0; gap: 6px; }
+        .radar-panel-inline .radar-icon { font-size: 16px; }
+        .radar-panel-inline .radar-title { font-size: 12px; }
+        .radar-panel-inline .radar-toggle-btn { padding: 3px 9px; }
+        .radar-panel-inline .radar-slider-row { margin-top: 0; gap: 6px; }
+        .radar-panel-inline .radar-slider-label { display: none; }
+        .radar-panel-inline #radar-opacity-slider { width: 72px; flex: none; }
+        .radar-panel-inline .radar-status { margin-top: 0; gap: 5px; }
+        .radar-panel-inline .radar-status-text { display: none; }
+        .header-title {
+            color: #ffffff; font-weight: bold; font-size: 15px; margin-right: 10px;
+            min-width: 0; overflow: hidden; text-overflow: ellipsis;
+        }
+        .weather-btn {
+            background: linear-gradient(135deg, rgba(0, 64, 128, 0.9), rgba(0, 110, 190, 0.78));
+            color: white; border: 1px solid rgba(30, 144, 255, 0.9);
+            padding: 7px 16px; border-radius: 20px; cursor: pointer;
+            font-size: 14px; font-weight: bold; transition: 0.3s ease;
+            white-space: nowrap; flex-shrink: 0;
+        }
+        .weather-btn:hover { background-color: #1e90ff; color: black; box-shadow: 0 0 10px #1e90ff; }
+
+        /* ===== Top 5 Rain Panel (ใหม่) ===== */
+        #top-rainfall-panel {
+            position: absolute;
+            bottom: max(20px, env(safe-area-inset-bottom));
+            left: 10px;
+            z-index: 1000;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 12px;
+            box-shadow: var(--glass-shadow);
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+            color: #fff;
+            font-size: 12px;
+            min-width: 230px;
+            max-width: 300px;
+            display: none; /* ซ่อนไว้ก่อนจนกว่าจะโหลดข้อมูลเสร็จ */
+        }
+        .top-title {
+            font-weight: bold;
+            color: var(--radar-cyan);
+            margin-bottom: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            padding-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        #top-rainfall-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        #top-rainfall-list li {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            cursor: pointer;
+            padding: 4px 6px;
+            border-radius: 6px;
+            transition: background 0.2s ease;
+        }
+        #top-rainfall-list li:hover {
+            background: rgba(255,255,255,0.15);
+        }
+        .top-rank {
+            font-weight: bold;
+            color: #ffd400;
+            margin-right: 6px;
+            width: 15px;
+        }
+        .top-name {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-right: 8px;
+        }
+        .top-val {
+            font-weight: bold;
+            font-size: 13px;
+        }
+
+        /* Weather Overlay */
+        #weather-overlay {
+            display: none; position: absolute; top: var(--topbar-offset); left: 50%;
+            transform: translateX(-50%); z-index: 1001;
+            width: min(96%, 1100px); max-height: calc(100dvh - var(--topbar-offset) - 18px);
+            overflow-y: auto; padding: 18px; border: 1px solid var(--glass-border);
+            border-radius: 18px; background: rgba(0, 0, 0, 0.72);
+            box-shadow: var(--glass-shadow);
+            -webkit-backdrop-filter: blur(16px) saturate(140%);
+            backdrop-filter: blur(16px) saturate(140%);
+        }
+        #weather-overlay img { width: 100%; border-radius: 8px; }
+        .close-btn { color: #ff4444; cursor: pointer; float: right; font-weight: bold; margin-bottom: 8px; }
+
+        /* Video Popup */
+        .leaflet-popup-content-wrapper { background: rgba(0,0,0,0.95) !important; color: #1e90ff !important; border: 2px solid #1e90ff; }
+        .leaflet-popup-tip { background: #1e90ff !important; }
+        .cam-label { text-align: center; font-weight: bold; margin-bottom: 8px; font-size: 14px; color: #fff; }
+        .video-container { position: relative; width: 100%; border-radius: 5px; overflow: hidden; background: #000; box-shadow: 0 0 10px #000; }
+        .video-container iframe {
+            display: block; width: 100%; height: min(450px, 56.25vw);
+            min-height: 220px; aspect-ratio: 16 / 9; border: 0;
+        }
+
+        .video-weather-overlay {
+            position: absolute; bottom: 0; left: 0; width: 100%;
+            background: rgba(0, 0, 0, 0.65); color: #ffffff;
+            padding: 6px 12px; font-size: 12px; display: flex;
+            justify-content: space-between; align-items: center;
+            backdrop-filter: blur(4px); pointer-events: none;
+        }
+
+        @keyframes camPulse {
+            0%, 100% { transform: scale(1);   box-shadow: 0 0 10px rgba(30,144,255,0.9), inset 0 0 6px rgba(30,144,255,0.4); }
+            50%      { transform: scale(1.18); box-shadow: 0 0 20px rgba(30,144,255,1),   inset 0 0 10px rgba(30,144,255,0.7); }
+        }
+
+        /* ===== Animation สำหรับจุดฝนหนัก ===== */
+        @keyframes rainHeavyPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 32, 32, 0.7); }
+            50%      { box-shadow: 0 0 0 10px rgba(255, 32, 32, 0); }
+        }
+
+        .radar-header { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+        .radar-icon { font-size: 18px; animation: pulse-icon 2s ease-in-out infinite; }
+        @keyframes pulse-icon { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.12); } }
+        .radar-title { color: #00e5ff; font-weight: bold; font-size: 13px; text-shadow: 0 0 8px rgba(0, 229, 255, 0.7); letter-spacing: 0.5px; }
+        .radar-toggle-btn { margin-left: auto; background: transparent; border: 1px solid #00e5ff; color: #00e5ff; border-radius: 10px; padding: 2px 10px; font-size: 11px; font-weight: bold; cursor: pointer; transition: 0.25s ease; }
+        .radar-toggle-btn:hover, .radar-toggle-btn.active { background: #00e5ff; color: #000; box-shadow: 0 0 8px #00e5ff; }
+        .radar-slider-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+        .radar-slider-label { color: #aaa; font-size: 11px; white-space: nowrap; }
+        #radar-opacity-slider { -webkit-appearance: none; appearance: none; flex: 1; height: 5px; border-radius: 3px; background: linear-gradient(to right, #00e5ff 0%, #00e5ff var(--val, 70%), #333 var(--val, 70%), #333 100%); outline: none; cursor: pointer; }
+        #radar-opacity-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%; background: #00e5ff; border: 2px solid #000; box-shadow: 0 0 6px #00e5ff; cursor: pointer; }
+        #radar-opacity-slider::-moz-range-thumb { width: 13px; height: 13px; border-radius: 50%; background: #00e5ff; border: 2px solid #000; box-shadow: 0 0 6px #00e5ff; cursor: pointer; }
+        #radar-opacity-value { color: #00e5ff; font-size: 11px; font-weight: bold; min-width: 30px; text-align: right; }
+        .radar-status { margin-top: 7px; display: flex; align-items: center; gap: 6px; }
+        .radar-dot { width: 7px; height: 7px; border-radius: 50%; background: #00e5ff; box-shadow: 0 0 6px #00e5ff; animation: blink-dot 1.5s ease-in-out infinite; }
+        @keyframes blink-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+        .radar-status-text { color: #aab5c2; font-size: 10px; }
+        .loading-state {
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+            min-height: 90px; color: #b9eaff; font-size: 12px; text-align: center;
+        }
+        .loading-spinner {
+            width: 18px; height: 18px; flex: 0 0 18px;
+            border: 2px solid rgba(0, 229, 255, 0.25);
+            border-top-color: var(--radar-cyan); border-right-color: var(--ui-blue);
+            border-radius: 50%; animation: loadingSpin 0.8s linear infinite;
+            box-shadow: 0 0 10px rgba(0, 229, 255, 0.45);
+        }
+        @keyframes loadingSpin { to { transform: rotate(360deg); } }
+        .weather-skeleton {
+            position: relative; min-height: 240px; overflow: hidden; border-radius: 8px;
+            background: linear-gradient(100deg, rgba(255,255,255,0.06) 25%, rgba(100,210,255,0.18) 37%, rgba(255,255,255,0.06) 63%);
+            background-size: 400% 100%; animation: skeletonShimmer 1.5s ease-in-out infinite;
+        }
+        .weather-skeleton::after {
+            content: ''; position: absolute; inset: 18px; border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px; box-shadow: 0 36px 0 rgba(255,255,255,0.07), 0 72px 0 rgba(255,255,255,0.05), 0 108px 0 rgba(255,255,255,0.04);
+        }
+        @keyframes skeletonShimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+        .weather-error {
+            display: none; padding: 18px 10px; color: #ffb4b4; text-align: center; font-size: 12px;
+        }
+        .retry-btn {
+            margin-top: 10px; padding: 5px 12px; border: 1px solid var(--radar-cyan);
+            border-radius: 14px; background: rgba(0, 229, 255, 0.12); color: var(--radar-cyan);
+            cursor: pointer; font-size: 11px; font-weight: bold;
+        }
+        .retry-btn:hover { background: var(--radar-cyan); color: #001018; }
+        .radar-loading-spinner { display: none; width: 10px; height: 10px; border-width: 1.5px; }
+        .radar-panel-inline.is-loading .radar-loading-spinner { display: inline-block; }
+        .radar-panel-inline.is-loading .radar-dot { display: none; }
+        .radar-panel-inline.is-error .radar-dot { background: #ff6565; box-shadow: 0 0 6px #ff6565; animation: none; }
+        .radar-retry-btn { display: none; margin: 0; padding: 2px 7px; font-size: 10px; }
+        .radar-panel-inline.is-error .radar-retry-btn { display: inline-block; }
+
+        button:focus-visible, input:focus-visible {
+            outline: 2px solid #fff; outline-offset: 3px;
+        }
+        .leaflet-top.leaflet-right { top: var(--topbar-offset); }
+
+        @media (max-width: 900px) {
+            .ui-top-container { gap: 10px; padding: 9px 13px; }
+            .header-title { font-size: 13px; }
+            .weather-btn { padding: 6px 12px; font-size: 12px; }
+            #top-rainfall-panel { min-width: 180px; max-width: 220px; font-size: 11px; padding: 8px; }
+            .top-name { max-width: 100px; }
+        }
+
+        @media (max-width: 760px) {
+            :root { --topbar-offset: 142px; }
+            .ui-top-container {
+                display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+                top: max(8px, env(safe-area-inset-top)); width: calc(100% - 16px);
+                max-width: calc(100% - 16px); gap: 8px 9px; padding: 9px 10px;
+                border-radius: 17px; white-space: normal;
+            }
+            #live-clock {
+                grid-column: 1 / -1; width: 100%; padding: 0 0 7px;
+                border-right: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+                text-align: center; font-size: clamp(10px, 2.8vw, 13px);
+                overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            }
+            .radar-panel-inline {
+                grid-column: 1 / 3; gap: 5px; padding-right: 7px;
+                justify-content: flex-start; border-right-color: rgba(255, 255, 255, 0.2);
+            }
+            .radar-panel-inline .radar-title { display: none; }
+            .radar-panel-inline .radar-header { gap: 5px; }
+            .radar-panel-inline #radar-opacity-slider { width: clamp(46px, 16vw, 72px); }
+            .radar-panel-inline #radar-opacity-value { min-width: 25px; }
+            .header-title {
+                grid-column: 1 / -1; grid-row: 3; width: 100%; margin: 0;
+                text-align: center; font-size: clamp(10px, 3.1vw, 13px);
+            }
+            .weather-btn { grid-column: 3; grid-row: 2; padding: 6px 9px; font-size: 11px; }
+            .leaflet-top.leaflet-right { top: var(--topbar-offset); }
+            #weather-overlay {
+                top: calc(var(--topbar-offset) + 8px); width: calc(100% - 20px);
+                max-height: calc(100dvh - var(--topbar-offset) - 18px); padding: 10px;
+            }
+            .video-container iframe { height: auto; min-height: 0; }
+            
+            #top-rainfall-panel { display: none !important; } /* ซ่อนบนมือถือเพื่อประหยัดพื้นที่ */
+        }
+    </style>
+
+    <script>
+        window.difyChatbotConfig = {
+         token: 'ZmJkVbqzJi2hl5eO',
+         baseUrl: 'https://122.8.149.221',
+         remove_webapp_brand: true,
+         systemVariables: {},
+         userVariables: {
+           name: 'สายฟ้า',
+           avatar_url: 'https://www.tmd.go.th/media/ServicePages/Identities/Mascots/saifah.png',
+         },
+         containerProps: {},
+        }
+
+        function setWeatherLoading() {
+            var skel = document.getElementById('weatherSkeleton');
+            var err = document.getElementById('weatherError');
+            var img = document.getElementById('weatherImage');
+            if (skel) skel.style.display = 'block';
+            if (err) err.style.display = 'none';
+            if (img) img.style.display = 'none';
+        }
+        function weatherLoaded() {
+            var skel = document.getElementById('weatherSkeleton');
+            var err = document.getElementById('weatherError');
+            var img = document.getElementById('weatherImage');
+            if (skel) skel.style.display = 'none';
+            if (err) err.style.display = 'none';
+            if (img) img.style.display = 'block';
+        }
+        function weatherFailed() {
+            var skel = document.getElementById('weatherSkeleton');
+            var err = document.getElementById('weatherError');
+            var img = document.getElementById('weatherImage');
+            if (skel) skel.style.display = 'none';
+            if (img) img.style.display = 'none';
+            if (err) err.style.display = 'block';
+        }
+        function retryWeather() {
+            setWeatherLoading();
+            var image = document.getElementById('weatherImage');
+            if (!image) return;
+            var baseUrl = image.src.split('&reload=')[0].split('&retry=')[0];
+            image.src = baseUrl + '&retry=' + Date.now();
+        }
+        function toggleWeather() {
+            var el = document.getElementById('weather-overlay');
+            var opening = el.style.display !== 'block';
+            el.style.display = opening ? 'block' : 'none';
+            if (opening) {
+                var image = document.getElementById('weatherImage');
+                if (image && (!image.complete || image.naturalWidth === 0)) setWeatherLoading();
+            }
+        }
+    </script>
+    <script src="https://122.8.149.221/embed.min.js" id="ZmJkVbqzJi2hl5eO" defer></script>
+</head>
+<body>
+
+    <div class="ui-top-container">
+        <div id="live-clock">กำลังโหลดเวลา...</div>
+
+        <div class="radar-panel-inline" aria-label="แผงควบคุมเรดาร์">
+            <div class="radar-header">
+                <span class="radar-icon">🌧️</span>
+                <span class="radar-title">เรดาร์ตำบลเมืองคอน</span>
+                <button class="radar-toggle-btn active" id="radarToggleBtn" onclick="toggleRadar()">เปิด</button>
+            </div>
+            <div class="radar-slider-row">
+                <span class="radar-slider-label">โปร่งใส:</span>
+                <input type="range" id="radar-opacity-slider" min="0" max="100" value="70" oninput="updateRadarOpacity(this.value)">
+                <span id="radar-opacity-value">70%</span>
+            </div>
+            <div class="radar-status" title="สถานะเรดาร์">
+                <div class="radar-dot" id="radarDot"></div>
+                <span class="loading-spinner radar-loading-spinner" aria-hidden="true"></span>
+                <span class="radar-status-text" id="radarStatusText">กำลังโหลดเรดาร์...</span>
+                <button class="retry-btn radar-retry-btn" onclick="retryRadar()">ลองใหม่</button>
+            </div>
+        </div>
+
+        <div class="header-title">กล้องตลาด 100ปี ร่อนพิบูลย์+เรดาร์</div>
+        <button class="weather-btn" onclick="toggleWeather()">🌡️ เช็คสภาพอากาศ</button>
+    </div>
+
+    <!-- Panel แสดง Top 5 (ซ่อนไว้ก่อน) -->
+    <div id="top-rainfall-panel">
+        <div class="top-title">🏆 5 อันดับฝนหนักสุด (มม./ชม.)</div>
+        <ul id="top-rainfall-list"></ul>
+    </div>
+
+    <div id="weather-overlay" aria-live="polite">
+        <span class="close-btn" onclick="toggleWeather()">[ปิด X]</span>
+        <div class="weather-skeleton" id="weatherSkeleton" aria-label="กำลังโหลดข้อมูลสภาพอากาศ">
+            <div class="loading-state"><span class="loading-spinner"></span><span>กำลังโหลดข้อมูลสภาพอากาศ...</span></div>
+        </div>
+        <div class="weather-error" id="weatherError">
+            ไม่สามารถโหลดข้อมูลสภาพอากาศได้<br>
+            <button class="retry-btn" onclick="retryWeather()">ลองโหลดใหม่</button>
+        </div>
+        <img id="weatherImage" src="https://www.yr.no/en/content/2-1150921/meteogram.svg?mode=dark&t=1773373548447" alt="Meteogram" onload="weatherLoaded()" onerror="weatherFailed()">
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+        // ========== 1. เวลาไทย ==========
+        function updateThaiClock() {
+            const now = new Date();
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+            document.getElementById('live-clock').textContent = now.toLocaleDateString('th-TH', options);
+        }
+        setInterval(updateThaiClock, 1000);
+        updateThaiClock();
+
+        // ========== 2. แผนที่ ==========
+        var radarBounds = [[7.595929609239565, 98.66181095811945], [9.697971242406755, 100.6377990348955]];
+        var map = L.map('map', {zoomControl: false}).setView([8.65, 99.5], 8);
+        L.control.zoom({position: 'topright'}).addTo(map);
+
+        var satelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 20, attribution: '© Google' });
+        var opentopoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '© OpenTopoMap' });
+
+        var baseMaps = { "🛰️ Google Satellite": satelliteLayer, "⛰️ OpenTopoMap": opentopoLayer };
+
+        var nstRainLayer = L.layerGroup();
+        var overlays = { "🌧️ สถานีฝน นศ. (ทั้งจังหวัด)": nstRainLayer };
+        L.control.layers(baseMaps, overlays, {position: 'topright'}).addTo(map);
+        satelliteLayer.addTo(map);
+
+        // ========== 3. ไอคอนกล้อง ==========
+        var camIcon = L.divIcon({
+            className: '',
+            html:
+                '<div style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;' +
+                        'background:rgba(30,144,255,0.15);border:1px solid rgba(30,144,255,0.6);border-radius:50%;' +
+                        'box-shadow:0 0 10px rgba(30,144,255,0.9),inset 0 0 6px rgba(30,144,255,0.4);' +
+                        'animation:camPulse 2s ease-in-out infinite;">' +
+                    '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" ' +
+                         'fill="none" stroke="#ff0000" stroke-width="1.75" ' +
+                         'stroke-linecap="round" stroke-linejoin="round" ' +
+                         'style="filter:drop-shadow(0 0 4px #1e90ff);">' +
+                        '<path d="M9.4787 3.1459L16.8962 6.1428C17.4083 6.3497 17.6556 6.9325 17.4488 7.4446L15.5757 12.0805C15.3688 12.5926 14.786 12.84 14.2739 12.6331L6.8565 9.6362C5.8323 9.2224 5.3375 8.0568 5.7513 7.0326L6.8751 4.2511C7.2889 3.2269 8.4546 2.7322 9.4787 3.1459ZM17.0742 8.3718L19.9192 8.1446C20.6602 8.0854 21.2044 8.8268 20.926 9.516L19.516 13.0059C19.2375 13.6951 18.331 13.8504 17.8391 13.293L15.9503 11.1533M7.3201 9.8235L7.3201 17L3 17M3 13L3 21"/>' +
+                    '</svg>' +
+                '</div>',
+            iconSize: [34, 34],
+            iconAnchor: [17, 17],
+            popupAnchor: [0, -18]
+        });
+
+        // ========== 4. หมุดกล้อง ==========
+        var marker1 = L.marker([8.184235, 99.850726], {icon: camIcon}).addTo(map);
+        marker1.bindPopup(
+            '<div class="cam-label">สดจากช่องยูทูป</div>' +
+            '<div class="video-container">' +
+                '<iframe src="https://www.youtube.com/embed/EVXZvL2IFQk?si=a6WtOBFriWSDX5nA" ' +
+                    'title="YouTube video player" frameborder="0" ' +
+                    'allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" ' +
+                    'referrerpolicy="strict-origin-when-cross-origin" allowfullscreen>' +
+                '</iframe>' +
+                '<div class="video-weather-overlay">' +
+                    '<span>📍 ตลาด 100 ปี ร่อนพิบูลย์</span>' +
+                    '<span id="popup-weather-status">🌡️ สภาพอากาศ: กำลังโหลด...</span>' +
+                '</div>' +
+            '</div>',
+            {
+                maxWidth: window.innerWidth < 600 ? Math.min(window.innerWidth - 24, 420) : 800,
+                minWidth: window.innerWidth < 600 ? Math.min(window.innerWidth - 48, 300) : 500
+            }
+        );
+
+        function updatePopupWeather() {
+            const el = document.getElementById('popup-weather-status');
+            if (el) el.textContent = '🌡️ 28°C | ท้องฟ้าโปร่ง';
+        }
+        setInterval(updatePopupWeather, 10000);
+        setTimeout(updatePopupWeather, 500);
+
+        // ========== 5. Weather Overlay ==========
+        setWeatherLoading();
+
+        // ========== 6. Radar ==========
+        var radarUrl = 'https://semet.uk/loop/NSTLoop.gif';
+        var radarLayer = L.imageOverlay(radarUrl, radarBounds, { opacity: 0.7, interactive: false }).addTo(map);
+        var radarVisible = true;
+        var radarPanel = document.querySelector('.radar-panel-inline');
+
+        function setRadarLoading() {
+            radarPanel.classList.add('is-loading');
+            radarPanel.classList.remove('is-error');
+            document.getElementById('radarStatusText').textContent = 'กำลังโหลดเรดาร์...';
+        }
+        function setRadarReady() {
+            radarPanel.classList.remove('is-loading', 'is-error');
+            document.getElementById('radarStatusText').textContent = 'กำลังแสดงกลุ่มฝน...';
+        }
+        function setRadarError() {
+            radarPanel.classList.remove('is-loading');
+            radarPanel.classList.add('is-error');
+            document.getElementById('radarStatusText').textContent = 'โหลดเรดาร์ไม่สำเร็จ';
+        }
+        function retryRadar() {
+            setRadarLoading();
+            radarLayer.setUrl(radarUrl + '?reload=' + Date.now());
+        }
+        radarLayer.on('load', setRadarReady);
+        radarLayer.on('error', setRadarError);
+        setRadarLoading();
+
+        function toggleRadar() {
+            var btn = document.getElementById('radarToggleBtn');
+            var dot = document.getElementById('radarDot');
+            var status = document.getElementById('radarStatusText');
+            var slider = document.getElementById('radar-opacity-slider');
+            if (radarVisible) {
+                radarLayer.setOpacity(0);
+                radarVisible = false;
+                btn.textContent = 'ปิด'; btn.classList.remove('active');
+                dot.style.animationPlayState = 'paused'; dot.style.opacity = '0.2';
+                status.textContent = 'ปิดการแสดงเรดาร์';
+                slider.disabled = true; slider.style.opacity = '0.4';
+            } else {
+                var op = parseInt(slider.value) / 100;
+                radarLayer.setOpacity(op);
+                radarVisible = true;
+                btn.textContent = 'เปิด'; btn.classList.add('active');
+                dot.style.animationPlayState = 'running'; dot.style.opacity = '';
+                slider.disabled = false; slider.style.opacity = '1';
+                if (radarPanel.classList.contains('is-error')) {
+                    status.textContent = 'โหลดเรดาร์ไม่สำเร็จ';
+                } else if (radarPanel.classList.contains('is-loading')) {
+                    status.textContent = 'กำลังโหลดเรดาร์...';
+                } else {
+                    status.textContent = 'กำลังแสดงกลุ่มฝน...';
+                }
+            }
+        }
+
+        function updateRadarOpacity(val) {
+            var pct = parseInt(val);
+            document.getElementById('radar-opacity-slider').style.setProperty('--val', pct + '%');
+            document.getElementById('radar-opacity-value').textContent = pct + '%';
+            if (radarVisible) radarLayer.setOpacity(pct / 100);
+        }
+        updateRadarOpacity(70);
+
+        // ============================================================
+        // ========== 7. สถานีวัดน้ำฝน (ทั้งจังหวัดนครศรีธรรมราช) ==========
+        // ============================================================
+        
+        // เก็บ Reference ของ Marker เพื่อใช้ในการ FlyTo จาก Panel
+        var stationMarkers = {}; 
+
+        function rainColor(mm) {
+            if (mm == null || mm <= 0)   return '#ffffff';
+            if (mm <= 0.1)               return '#7fd3ff';
+            if (mm <= 5)                 return '#00b4ff';
+            if (mm <= 25)                return '#ffd400';
+            if (mm <= 50)                return '#ff7a00';
+            return '#ff2020';
+        }
+        function rainRadius(mm) {
+            if (mm == null || mm <= 0.1) return 6;
+            if (mm <= 5)                 return 8;
+            if (mm <= 25)                return 10;
+            if (mm <= 50)                return 12;
+            return 15;
+        }
+
+        function toStationObj(fields, row) {
+            const o = {};
+            fields.forEach((k, i) => { o[k] = row[i]; });
+            return o;
+        }
+
+        const FALLBACK_STATIONS = [
+            { id: 855519,  lat: 8.43217, lon: 99.7688,  name: 'สถานีวิจัยต้นน้ำคีรีวง', agency: 'FOP', prov: 'ต.กำโลน · อ.ลานสกา · นครศรีธรรมราช', mm: 0, mm24: 71.2 },
+            { id: 1094448, lat: 8.40118, lon: 99.80203, name: 'โรงเรียนวัดโคกโพธิ์สถิตย์', agency: 'HII', prov: 'ต.กำโลน · อ.ลานสกา · นครศรีธรรมราช', mm: 59.8, mm24: 60.4 },
+            { id: 1120555, lat: 8.2542,  lon: 99.80341, name: 'หน่วยจัดการต้นน้ำปากพนัง', agency: 'FOP', prov: 'ต.หินตก · อ.ร่อนพิบูลย์ · นครศรีธรรมราช', mm: 31.8, mm24: null }
+        ];
+
+        // ---- ฟังก์ชันอัปเดต Panel Top 5 ----
+        function updateTop5(stations) {
+            const listEl = document.getElementById('top-rainfall-list');
+            const panelEl = document.getElementById('top-rainfall-panel');
+            listEl.innerHTML = '';
+            
+            // กรองเฉพาะสถานีที่มีฝนตกจริง (mm > 0)
+            const valid = stations
+                .filter(s => {
+                    const mm = Number(s.mm);
+                    return isFinite(mm) && mm > 0;
+                })
+                .sort((a, b) => Number(b.mm) - Number(a.mm)); // เรียงจากมากไปน้อย
+
+            if (valid.length === 0) {
+                listEl.innerHTML = '<li style="justify-content:center;color:#9aa0a6;cursor:default;padding:10px 0;">ขณะนี้ไม่มีฝนตกในพื้นที่</li>';
+                panelEl.style.display = 'block';
+                return;
+            }
+
+            valid.slice(0, 5).forEach((s, i) => {
+                const mm = Number(s.mm);
+                const lat = parseFloat(s.lat);
+                const lng = parseFloat(s.lon);
+                const color = rainColor(mm);
+
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span class="top-rank">${i + 1}.</span>
+                    <span class="top-name" title="${s.name}">${s.name}</span>
+                    <span class="top-val" style="color:${color}">${mm.toFixed(1)}</span>
+                `;
+                
+                // คลิกแล้วบินไปหาสถานีนั้น
+                li.onclick = () => {
+                    map.flyTo([lat, lng], 12, { duration: 1.5 });
+                    const marker = stationMarkers[s.id];
+                    if (marker) {
+                        setTimeout(() => marker.openPopup(), 1600); // รอให้แผนที่บินไปถึงก่อน แล้วค่อยเปิด Popup
+                    }
+                };
+                listEl.appendChild(li);
+            });
+            
+            panelEl.style.display = 'block';
+        }
+
+        // ---- วาดสถานีลงแผนที่ ----
+        function renderStations(stations, tag) {
+            nstRainLayer.clearLayers();
+            stationMarkers = {}; // เคลียร์ของเก่า
+            let drawn = 0;
+
+            stations.forEach(s => {
+                const lat = parseFloat(s.lat);
+                const lng = parseFloat(s.lon);
+                if (!isFinite(lat) || !isFinite(lng)) return;
+
+                const mm   = (s.mm   == null) ? null : Number(s.mm);
+                const mm24 = (s.mm24 == null) ? null : Number(s.mm24);
+                const color = rainColor(mm);
+                const r     = rainRadius(mm);
+
+                const html =
+                    '<div style="min-width:180px;text-align:center">' +
+                    '<div style="font-weight:bold;color:#fff;margin-bottom:3px">' + (s.name || 'ไม่ทราบชื่อ') + '</div>' +
+                    '<div style="font-size:11px;color:#9aa0a6;margin-bottom:6px">' + (s.agency || '') + ' · ID ' + s.id + '</div>' +
+                    '<div style="font-size:11px;color:#9aa0a6;margin-bottom:6px">' + (s.prov || '') + '</div>' +
+                    '<div style="font-size:22px;font-weight:bold;color:' + color + '">' +
+                        (mm == null ? '—' : mm.toFixed(1)) +
+                        '<span style="font-size:11px"> มม./1 ชม.</span>' +
+                    '</div>' +
+                    '<div style="font-size:12px;color:#ccc;margin-top:3px">24 ชม.: ' +
+                        (mm24 == null ? '—' : mm24.toFixed(1)) + ' มม.</div>' +
+                    '</div>';
+
+                const marker = L.circleMarker([lat, lng], {
+                    radius: r, color: '#000', weight: 1.5,
+                    fillColor: color, fillOpacity: 0.9
+                });
+
+                // เพิ่ม Animation กรณีฝนตกหนัก
+                if (mm != null && mm > 50) {
+                    marker.getElement()?.style.setProperty('animation', 'rainHeavyPulse 1.5s infinite');
+                }
+
+                marker.bindPopup(html, { maxWidth: 260 })
+                      .bindTooltip((s.name || '') + ' — ' + (mm == null ? '—' : mm.toFixed(1)) + ' มม.', {
+                          direction: 'top', offset: [0, -6], opacity: 0.9
+                      })
+                      .addTo(nstRainLayer);
+
+                stationMarkers[s.id] = marker; // เก็บ Reference ไว้ใช้กับ Panel Top 5
+                drawn++;
+            });
+
+            if (!map.hasLayer(nstRainLayer)) nstRainLayer.addTo(map);
+            console.log('[NST Rain][' + tag + '] วาด ' + drawn + ' สถานี');
+
+            // อัปเดต Panel Top 5
+            updateTop5(stations);
+        }
+
+        // ---- โหลดจาก API ----
+        async function loadNstRain() {
+            const now = new Date();
+            const th = new Date(now.getTime() + 7 * 3600 * 1000 - 30 * 60 * 1000);
+            th.setUTCMinutes(Math.floor(th.getUTCMinutes() / 5) * 5);
+            const p = n => String(n).padStart(2, '0');
+            const date = th.getUTCFullYear() + '-' + p(th.getUTCMonth() + 1) + '-' + p(th.getUTCDate());
+            const time = p(th.getUTCHours()) + ':' + p(th.getUTCMinutes());
+
+            const apiUrl = 'https://clpp-radar.onwr.go.th/api/rain_stations'
+                      + '?radar_date=' + date + '&radar_time=' + encodeURIComponent(time);
+
+            try {
+                // ใช้ Fetch ตรงๆ (เพราะคุณเปิด CORS Extension ไว้แล้ว)
+                // ถ้าไม่ได้เปิด Extension ให้เปลี่ยนไปใช้ Proxy ข้างล่าง
+                const res = await fetch(apiUrl, { cache: 'no-store' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                
+                const json = await res.json();
+                const fields = json.fields || [];
+                const rows   = json.stations || [];
+
+                const nstStations = rows
+                    .map(r => toStationObj(fields, r))
+                    .filter(s => String(s.prov || '').split('·').pop().trim() === 'นครศรีธรรมราช');
+
+                console.log('[NST Rain] API returned', rows.length, 'rows, NST matched:', nstStations.length);
+
+                if (nstStations.length === 0) {
+                    console.warn('[NST Rain] ไม่พบข้อมูลสถานีในนครศรีธรรมราช ณ เวลานี้');
+                    renderStations([], 'empty');
+                    return;
+                }
+
+                renderStations(nstStations, 'api');
+
+            } catch (err) {
+                console.error('[NST Rain] Fetch ล้มเหลว:', err);
+                console.warn('[NST Rain] → ใช้ FALLBACK mock เพื่อทดสอบ UI');
+                renderStations(FALLBACK_STATIONS, 'fallback');
+            }
+        }
+
+        loadNstRain();
+        setInterval(loadNstRain, 5 * 60 * 1000);
+
+        // ---- Legend มุมล่างขวา ----
+        var rainLegend = L.control({ position: 'bottomright' });
+        rainLegend.onAdd = function () {
+            const div = L.DomUtil.create('div');
+            div.style.cssText =
+                'background:rgba(4,15,30,.85);color:#fff;padding:8px 12px;border-radius:10px;' +
+                'font-size:11px;border:1px solid rgba(80,190,255,.5);line-height:1.6;' +
+                'font-family:Tahoma,sans-serif';
+            const rows = [
+                ['#ffffff', '0 มม.'],
+                ['#7fd3ff', '≤ 0.1'],
+                ['#00b4ff', '0.2–5'],
+                ['#ffd400', '5.1–25'],
+                ['#ff7a00', '25.1–50'],
+                ['#ff2020', '> 50']
+            ];
+            div.innerHTML = '<b style="color:#00e5ff">ฝน นครศรีฯ (มม./ชม.)</b><br>' +
+                rows.map(r =>
+                    '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;' +
+                    'background:' + r[0] + ';border:1px solid #000;margin-right:6px;vertical-align:middle">' +
+                    '</span>' + r[1]
+                ).join('<br>');
+            return div;
+        };
+        rainLegend.addTo(map);
+    </script>
+</body>
+</html>
